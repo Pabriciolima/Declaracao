@@ -1761,7 +1761,7 @@ section {
   color: var(--text-secondary);
 }
 
-/* Nova funcionalidade: Duração da música */
+/* Duração */
 .playlist-duration {
   font-family: 'Inter', sans-serif;
   font-size: 10px;
@@ -1773,7 +1773,7 @@ section {
   text-align: right;
 }
 
-/* Nova funcionalidade: Ícone de like/curtir */
+/* Like */
 .playlist-like {
   font-size: 14px;
   color: var(--text-muted);
@@ -1791,7 +1791,7 @@ section {
   opacity: 1;
 }
 
-/* Nova funcionalidade: Contador de plays */
+/* Plays */
 .playlist-plays {
   font-family: 'Inter', sans-serif;
   font-size: 9px;
@@ -1900,7 +1900,7 @@ section {
 .playlist-item.error .playlist-error { display: block; }
 .playlist-item.error .playlist-play-btn { display: none; }
 
-/* Nova funcionalidade: Playlist Header */
+/* Playlist Header */
 .playlist-header {
   display: flex;
   align-items: center;
@@ -1931,7 +1931,7 @@ section {
   font-weight: 300;
 }
 
-/* Nova funcionalidade: Badge de música atual */
+/* Badge */
 .now-playing-badge {
   display: inline-block;
   background: var(--spotify-green);
@@ -3032,72 +3032,194 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'm' || e.key === 'M') toggleMusic();
 });
 
-// ===== PLAYLIST =====
+// ===== PLAYLIST - CORRIGIDA =====
 let currentPlaylistMusic = null, isPlaylistPlaying = false, progressInterval = null;
+
 function showToast(message, icon = '✦') {
   let toast = document.getElementById('audioToast');
-  if (!toast) { toast = document.createElement('div'); toast.id = 'audioToast'; toast.className = 'audio-toast'; document.body.appendChild(toast); }
+  if (!toast) { 
+    toast = document.createElement('div'); 
+    toast.id = 'audioToast'; 
+    toast.className = 'audio-toast'; 
+    document.body.appendChild(toast); 
+  }
   toast.innerHTML = `<span class="audio-toast-icon">${icon}</span><span>${message}</span>`;
   toast.classList.add('show');
   setTimeout(() => toast.classList.remove('show'), 2500);
 }
+
 function togglePlaylistMusic(btn) {
-  const playlistItem = btn.closest('.playlist-item');
+  // Previne comportamento padrão do botão
+  if (btn) {
+    btn.stopPropagation ? btn.stopPropagation() : (btn.cancelBubble = true);
+  }
+  
+  const playlistItem = btn ? btn.closest('.playlist-item') : null;
+  if (!playlistItem) {
+    console.error('Playlist item não encontrado');
+    return;
+  }
+  
   let musicSrc = playlistItem.getAttribute('data-music');
   const fallbackSrc = playlistItem.getAttribute('data-fallback');
   const audio = document.getElementById('playlistAudio');
   const allItems = document.querySelectorAll('.playlist-item');
   const allBtns = document.querySelectorAll('.playlist-play-btn');
   
+  // Se clicou na mesma música que está tocando -> pausa
   if (currentPlaylistMusic === playlistItem && isPlaylistPlaying) {
-    audio.pause(); btn.textContent = '▶'; btn.classList.remove('playing');
+    audio.pause();
+    if (btn) {
+      btn.textContent = '▶';
+      btn.classList.remove('playing');
+    }
     playlistItem.classList.remove('playing', 'loading');
-    isPlaylistPlaying = false; currentPlaylistMusic = null; clearInterval(progressInterval);
+    isPlaylistPlaying = false;
+    currentPlaylistMusic = null;
+    clearInterval(progressInterval);
     return;
   }
+  
+  // Para todas as outras músicas
   allItems.forEach(item => item.classList.remove('playing', 'loading', 'error'));
-  allBtns.forEach(b => { b.textContent = '▶'; b.classList.remove('playing'); });
-  clearInterval(progressInterval);
-  playlistItem.classList.add('loading'); btn.textContent = '';
-  audio.src = musicSrc; audio.volume = 0.4;
-  audio.play().then(() => {
-    playlistItem.classList.remove('loading'); playlistItem.classList.add('playing');
-    btn.textContent = '⏸'; btn.classList.add('playing');
-    currentPlaylistMusic = playlistItem; isPlaylistPlaying = true;
-    startPlaylistProgress(btn, playlistItem);
-  }).catch(() => {
-    playlistItem.classList.remove('loading');
-    if (fallbackSrc && musicSrc !== fallbackSrc) {
-      showToast('Usando música alternativa 🎵', '');
-      audio.src = fallbackSrc;
-      audio.play().then(() => {
-        playlistItem.classList.add('playing'); btn.textContent = '⏸'; btn.classList.add('playing');
-        currentPlaylistMusic = playlistItem; isPlaylistPlaying = true;
-        startPlaylistProgress(btn, playlistItem);
-      }).catch(() => { playlistItem.classList.add('error'); btn.textContent = '⚠️'; showToast('Música não disponível 😢', '⚠️'); });
-    } else { playlistItem.classList.add('error'); btn.textContent = '⚠️'; showToast('Música não disponível 😢', '⚠️'); }
+  allBtns.forEach(b => { 
+    b.textContent = '▶'; 
+    b.classList.remove('playing'); 
   });
+  clearInterval(progressInterval);
+  
+  // Inicia nova música
+  playlistItem.classList.add('loading');
+  if (btn) btn.textContent = '';
+  
+  // Tenta tocar a música
+  audio.src = musicSrc;
+  audio.volume = 0.4;
+  
+  const playPromise = audio.play();
+  
+  if (playPromise !== undefined) {
+    playPromise
+      .then(() => {
+        // Sucesso!
+        playlistItem.classList.remove('loading');
+        playlistItem.classList.add('playing');
+        if (btn) {
+          btn.textContent = '⏸';
+          btn.classList.add('playing');
+        }
+        currentPlaylistMusic = playlistItem;
+        isPlaylistPlaying = true;
+        startPlaylistProgress(btn, playlistItem);
+        showToast(`🎵 Tocando: ${playlistItem.querySelector('.track-name')?.textContent || 'Música'}`, '🎵');
+      })
+      .catch((err) => {
+        console.warn('Erro ao tocar música principal:', err);
+        playlistItem.classList.remove('loading');
+        
+        // Tenta o fallback
+        if (fallbackSrc && musicSrc !== fallbackSrc) {
+          showToast('🎵 Usando música alternativa...', '🎵');
+          audio.src = fallbackSrc;
+          audio.play()
+            .then(() => {
+              playlistItem.classList.add('playing');
+              if (btn) {
+                btn.textContent = '⏸';
+                btn.classList.add('playing');
+              }
+              currentPlaylistMusic = playlistItem;
+              isPlaylistPlaying = true;
+              startPlaylistProgress(btn, playlistItem);
+              showToast(`🎵 Tocando: ${playlistItem.querySelector('.track-name')?.textContent || 'Música'}`, '🎵');
+            })
+            .catch((fallbackErr) => {
+              console.error('Erro também no fallback:', fallbackErr);
+              showMusicError(playlistItem, btn);
+            });
+        } else {
+          showMusicError(playlistItem, btn);
+        }
+      });
+  } else {
+    // Fallback para navegadores antigos
+    playlistItem.classList.remove('loading');
+    try {
+      audio.play();
+      playlistItem.classList.add('playing');
+      if (btn) {
+        btn.textContent = '⏸';
+        btn.classList.add('playing');
+      }
+      currentPlaylistMusic = playlistItem;
+      isPlaylistPlaying = true;
+      startPlaylistProgress(btn, playlistItem);
+    } catch (e) {
+      showMusicError(playlistItem, btn);
+    }
+  }
 }
+
+function showMusicError(playlistItem, btn) {
+  playlistItem.classList.add('error');
+  if (btn) {
+    btn.textContent = '⚠️';
+    btn.classList.remove('playing');
+  }
+  showToast('😢 Música não disponível no momento', '⚠️');
+}
+
 function startPlaylistProgress(btn, playlistItem) {
   const audio = document.getElementById('playlistAudio');
   const progressBar = playlistItem.querySelector('.playlist-progress');
   clearInterval(progressInterval);
+  
   progressInterval = setInterval(() => {
-    if (audio.duration) progressBar.style.width = (audio.currentTime / audio.duration * 100) + '%';
+    if (audio.duration) {
+      const progress = (audio.currentTime / audio.duration) * 100;
+      if (progressBar) progressBar.style.width = progress + '%';
+    }
   }, 200);
 }
+
+// Evento quando a música termina
 document.addEventListener('DOMContentLoaded', () => {
   const audio = document.getElementById('playlistAudio');
   if (audio) {
     audio.addEventListener('ended', () => {
-      document.querySelectorAll('.playlist-play-btn').forEach(b => { b.textContent = '▶'; b.classList.remove('playing'); });
-      document.querySelectorAll('.playlist-item').forEach(item => { item.classList.remove('playing', 'loading'); const pb = item.querySelector('.playlist-progress'); if (pb) pb.style.width = '0%'; });
-      isPlaylistPlaying = false; currentPlaylistMusic = null; clearInterval(progressInterval);
+      document.querySelectorAll('.playlist-play-btn').forEach(b => { 
+        b.textContent = '▶'; 
+        b.classList.remove('playing'); 
+      });
+      document.querySelectorAll('.playlist-item').forEach(item => { 
+        item.classList.remove('playing', 'loading'); 
+        const pb = item.querySelector('.playlist-progress'); 
+        if (pb) pb.style.width = '0%'; 
+      });
+      isPlaylistPlaying = false;
+      currentPlaylistMusic = null;
+      clearInterval(progressInterval);
+      showToast('⏹️ Música finalizada', '⏹️');
+    });
+    
+    // Tratamento de erro global do áudio
+    audio.addEventListener('error', (e) => {
+      console.warn('Erro no elemento de áudio:', e);
+      const item = currentPlaylistMusic;
+      if (item) {
+        item.classList.remove('playing');
+        item.classList.add('error');
+        const btn = item.querySelector('.playlist-play-btn');
+        if (btn) {
+          btn.textContent = '⚠️';
+          btn.classList.remove('playing');
+        }
+      }
     });
   }
 });
 
-// Nova função: Like na música
+// Função de like
 function toggleLike(el) {
   el.classList.toggle('liked');
   const isLiked = el.classList.contains('liked');
